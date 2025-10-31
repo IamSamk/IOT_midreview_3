@@ -22,8 +22,10 @@ export default function AlertsTable({ uid }) {
 
   return (
     <section className="card">
-      <h3 style={{ marginBottom: '1rem' }}>Alert history</h3>
-      <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+      <div className="card__header">
+        <h3 className="card__title">Alert history</h3>
+      </div>
+      <div className="scroll-area">
         <table className="alert-table">
           <thead>
             <tr>
@@ -44,9 +46,7 @@ export default function AlertsTable({ uid }) {
             ))}
             {!alerts.length && (
               <tr>
-                <td colSpan={4} style={{ textAlign: 'center', opacity: 0.6 }}>
-                  No alerts yet. Threshold crossings will appear here instantly.
-                </td>
+                <td colSpan={4} className="table-empty">No alerts yet. Threshold crossings will appear here instantly.</td>
               </tr>
             )}
           </tbody>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import classNames from 'classnames';
 import axios from 'axios';
 import { ref, set, update } from 'firebase/database';
 import { db } from '../firebaseClient.js';
@@ -118,49 +119,43 @@ export default function CoinSearch({ uid, onConnectionChange = () => {} }) {
 
   return (
     <div className="card">
-      <h3>Add coins</h3>
-      <p style={{ opacity: 0.6 }}>Search coins and add base thresholds. ESP32 will use these entries to trigger alerts.</p>
-      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-        <span
-          className="chip"
-          style={{
-            background: coinLayerConnected ? 'rgba(44, 177, 188, 0.16)' : 'rgba(255, 123, 123, 0.16)'
-          }}
-        >
-          CoinLayer {coinLayerConnected ? 'connected' : 'offline'}
+      <div className="card__header">
+        <div>
+          <h3 className="card__title">Add coins</h3>
+          <p className="card__meta">Search coins and add base thresholds. ESP32 will use these entries to trigger alerts.</p>
+        </div>
+      </div>
+      <div className="search-meta">
+        <span className={classNames('chip', 'chip--status', { 'chip--offline': !coinLayerConnected })}>
+          <span className="chip__dot" aria-hidden /> CoinLayer {coinLayerConnected ? 'online' : 'offline'}
         </span>
-        <span style={{ opacity: 0.6 }}>Showing {filtered.length} of {coins.length} coins</span>
+        <span className="muted-text">Showing {filtered.length} of {coins.length} coins</span>
       </div>
       <input
         placeholder="Search symbol or name"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        style={{
-          width: '100%',
-          borderRadius: '0.75rem',
-          border: '1px solid rgba(255,255,255,0.08)',
-          background: 'rgba(255,255,255,0.03)',
-          color: 'inherit',
-          padding: '0.75rem 1rem'
-        }}
+        className="text-input"
       />
-      {loading && <span>Loading coins...</span>}
-      {error && <span style={{ color: '#ff7b7b' }}>{error}</span>}
-      <div style={{ display: 'grid', gap: '0.75rem', maxHeight: '260px', overflowY: 'auto' }}>
+      {loading && <span className="muted-text">Loading coins…</span>}
+      {error && (
+        <span className="form-error form-error--block" role="alert">
+          {error}
+        </span>
+      )}
+      <div className="search-results">
         {filtered.map((coin) => (
-          <div key={coin.symbol} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
+          <div key={coin.symbol} className="search-result">
+            <div className="search-result__meta">
               <strong>{coin.symbol}</strong>
-              <div style={{ opacity: 0.6, fontSize: '0.85rem' }}>{coin.name || coin.symbol}</div>
+              <span className="search-result__name">{coin.name || coin.symbol}</span>
             </div>
             <button className="primary-button" type="button" onClick={() => handleSubscribe(coin.symbol)}>
               Add
             </button>
           </div>
         ))}
-        {!loading && !filtered.length && !error && (
-          <div style={{ opacity: 0.6 }}>No matches. Try a different symbol or name.</div>
-        )}
+        {!loading && !filtered.length && !error && <div className="muted-text">No matches. Try a different symbol or name.</div>}
       </div>
     </div>
   );

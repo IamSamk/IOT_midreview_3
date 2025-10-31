@@ -19,41 +19,37 @@ export default function Dashboard() {
   const symbols = useMemo(() => Object.keys(subscriptions), [subscriptions]);
 
   return (
-    <div className="dashboard-shell">
-      <aside className="sidebar">
-        <div>
-          <h2>Crypto Alerts</h2>
-          <p style={{ opacity: 0.6 }}>Signed in as {user?.email}</p>
+    <div className="dashboard">
+      <header className="dashboard-header">
+        <div className="dashboard-heading">
+          <h1>Crypto Alerts</h1>
+          <p className="muted-text">Signed in as {user?.email}</p>
         </div>
-        <div className="card">
-          <span className="chip">Subscriptions: {subscriptionCount}</span>
-          <span className="chip">Alerts logged in realtime</span>
-          <span
-            className="chip"
-            style={{
-              background: firebaseConnected ? 'rgba(44, 177, 188, 0.16)' : 'rgba(255, 123, 123, 0.16)'
-            }}
-          >
-            Firebase {firebaseConnected ? 'connected' : 'offline'}
-          </span>
-          <span
-            className="chip"
-            style={{
-              background: coinLayerConnected ? 'rgba(44, 177, 188, 0.16)' : 'rgba(255, 123, 123, 0.16)'
-            }}
-          >
-            CoinLayer {coinLayerConnected ? 'connected' : 'offline'}
-          </span>
+        <div className="dashboard-header__meta">
+          <div className="status-group">
+            <span className="chip">Subscriptions {subscriptionCount}</span>
+            <span className="chip">Alerts stream</span>
+            <span className={`chip chip--status ${firebaseConnected ? '' : 'chip--offline'}`}>
+              <span className="chip__dot" aria-hidden /> Firebase {firebaseConnected ? 'online' : 'offline'}
+            </span>
+            <span className={`chip chip--status ${coinLayerConnected ? '' : 'chip--offline'}`}>
+              <span className="chip__dot" aria-hidden /> CoinLayer {coinLayerConnected ? 'online' : 'offline'}
+            </span>
+          </div>
+          <button className="primary-button" type="button" onClick={() => signOut(auth)}>
+            Sign Out
+          </button>
         </div>
-        <button className="primary-button" type="button" onClick={() => signOut(auth)}>
-          Sign Out
-        </button>
-      </aside>
-      <main className="main-panel">
-        <CoinSearch uid={user?.uid} onConnectionChange={setCoinLayerConnected} />
-        <LiveChartPanel availableSymbols={symbols} />
-        <SubscriptionsGrid subscriptions={subscriptions} onUpdate={updateThreshold} onRemove={removeSymbol} />
-        <AlertsTable uid={user?.uid} />
+      </header>
+      <main className="dashboard-content">
+        <section className="dashboard-column">
+          <CoinSearch uid={user?.uid} onConnectionChange={setCoinLayerConnected} />
+          <SubscriptionsGrid subscriptions={subscriptions} onUpdate={updateThreshold} onRemove={removeSymbol} />
+        </section>
+        <section className="dashboard-column">
+          <LiveChartPanel availableSymbols={symbols} />
+          <AlertsTable uid={user?.uid} />
+        </section>
       </main>
     </div>
   );

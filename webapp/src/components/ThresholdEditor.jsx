@@ -33,35 +33,31 @@ export default function ThresholdEditor({ symbol, lower, upper, onSave, onRemove
   };
 
   return (
-    <article className="card">
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <article className="card threshold-card">
+      <header className="threshold-card__header">
         <div>
-          <h3 style={{ margin: 0 }}>{symbol}</h3>
-          <p style={{ opacity: 0.7, margin: '0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <h3 className="threshold-card__headline">{symbol}</h3>
+          <p className="threshold-card__meta">
             <span>Last price:</span>
             {loading ? (
               <span>Loading…</span>
             ) : price !== null ? (
               <>
                 <strong>${price.toFixed(2)}</strong>
-                <span style={{ opacity: 0.7 }}>({source === 'device' ? 'ESP32' : 'CoinLayer client'})</span>
-                {updatedAt && <span style={{ opacity: 0.6 }}>· {formatUpdatedAt(updatedAt)}</span>}
+                <span>({source === 'device' ? 'ESP32' : 'CoinLayer client'})</span>
+                {updatedAt && <span>· {formatUpdatedAt(updatedAt)}</span>}
               </>
             ) : (
-              <span style={{ opacity: 0.6 }}>No data yet</span>
+              <span>No data yet</span>
             )}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onRemove}
-          style={{ background: 'transparent', border: 'none', color: '#ff7b7b', fontWeight: 600 }}
-        >
+        <button type="button" onClick={onRemove} className="link-button">
           Remove
         </button>
       </header>
-      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '0.75rem' }}>
-        <label style={{ display: 'grid', gap: '0.35rem' }}>
+      <form onSubmit={handleSubmit} className="threshold-form">
+        <label>
           Lower threshold
           <input
             name="lower"
@@ -72,7 +68,7 @@ export default function ThresholdEditor({ symbol, lower, upper, onSave, onRemove
             className={classNames('threshold-input')}
           />
         </label>
-        <label style={{ display: 'grid', gap: '0.35rem' }}>
+        <label>
           Upper threshold
           <input
             name="upper"
