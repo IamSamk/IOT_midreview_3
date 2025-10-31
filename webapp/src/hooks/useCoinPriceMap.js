@@ -8,13 +8,21 @@ function normalizeTimestamp(value) {
 }
 
 function buildEntry(symbol, payload) {
+  const canonicalPrice = typeof payload?.price === 'number' ? payload.price : null;
   const devicePrice = typeof payload?.lastPrice === 'number' ? payload.lastPrice : null;
   const clientPrice = typeof payload?.lastClientPrice === 'number' ? payload.lastClientPrice : null;
-  const price = devicePrice ?? clientPrice;
+  const price = canonicalPrice ?? devicePrice ?? clientPrice;
   return {
     symbol,
     price,
-    source: devicePrice !== null ? 'device' : clientPrice !== null ? 'client' : 'unknown',
+    source:
+      canonicalPrice !== null
+        ? payload?.source || 'device'
+        : devicePrice !== null
+        ? 'device'
+        : clientPrice !== null
+        ? 'client'
+        : 'unknown',
     updatedAt: normalizeTimestamp(payload?.updatedAt || payload?.lastClientUpdatedAt)
   };
 }

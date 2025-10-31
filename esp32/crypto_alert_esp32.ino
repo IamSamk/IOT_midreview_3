@@ -20,7 +20,7 @@
 // CoinLayer API
 #define COINLAYER_API_KEY "2c54959595d7af478d4c6527fe232d72"
 
-// Hardware pins - YOUR CONFIGURATION
+// Hardware pins
 #define RED_LED_PIN    12
 #define GREEN_LED_PIN  14
 #define BLUE_LED_PIN   27
@@ -37,12 +37,13 @@ RealtimeDatabase Database;
 // Timer variables
 unsigned long lastFetchTime = 0;
 unsigned long lastDisplayTime = 0;
-const unsigned long fetchInterval = 60000; // Fetch every 60 seconds
-const unsigned long displayInterval = 5000; // Display status every 5 seconds
+const unsigned long fetchInterval = 60000;
+const unsigned long displayInterval = 5000;
 
 // User ID
-String userId = "RZCeb75gvLWRyMECnUgqQI1xgRr2";
+String userId = "";
 String userEmail = USER_EMAIL;
+bool userIdFetched = false;
 
 // Store subscription data
 struct Subscription {
@@ -53,23 +54,25 @@ struct Subscription {
   bool hasData;
 };
 
-Subscription subscriptions[10];
+Subscription subscriptions[20];
 int subscriptionCount = 0;
 
-// Alert tracking
-int alertsTriggeredCount = 0;
+// Alert tracking - track types separately
+int upperAlerts = 0;  // Count of price increases
+int lowerAlerts = 0;  // Count of price decreases
 
 void processData(AsyncResult &aResult);
 void fetchCoinPrices();
-void fetchUserSubscriptions();
-void checkAlertsAndTrigger(String symbol, float price);
-void triggerAlert(String symbol, String type, int totalAlerts);
+void fetchUserSubscriptionsFromFirebase();
+void checkAlertsAndTrigger(const String &symbol, float price, unsigned long epochSeconds);
+void logAlert(const String &symbol, const String &type, float price, unsigned long epochSeconds);
+void triggerAlerts();
 void displayStatus();
+void getUserIdFromAuth();
 
 void setup() {
   Serial.begin(115200);
   
-  // Setup hardware pins
   pinMode(RED_LED_PIN, OUTPUT);
   pinMode(GREEN_LED_PIN, OUTPUT);
   pinMode(BLUE_LED_PIN, OUTPUT);
@@ -86,7 +89,7 @@ void setup() {
     Serial.print(".");
     delay(300);
   }
-  Serial.println("\n✓ WiFi connected!");
+  Serial.println("\nWiFi connected!");
   Serial.print("IP: ");
   Serial.println(WiFi.localIP());
   
@@ -98,28 +101,31 @@ void setup() {
   app.getApp<RealtimeDatabase>(Database);
   Database.url(DATABASE_URL);
   
-  Serial.println("✓ Firebase initialized!");
-  Serial.println("✓ Authenticating user...");
+  Serial.println("Firebase initialized!");
+  Serial.println("Authenticating user...");
 }
 
 void loop() {
   app.loop();
   
   if (app.ready()) {
+    if (!userIdFetched) {
+      getUserIdFromAuth();
+      userIdFetched = true;
+    }
+    
     unsigned long currentTime = millis();
     
-    // Fetch coin prices and user subscriptions periodically
-    if (currentTime - lastFetchTime >= fetchInterval) {
+    if (currentTime - lastFetchTime >= fetchInterval && userId != "") {
       lastFetchTime = currentTime;
-      Serial.println("\n════════════════════════════════");
+      Serial.println("\n================================");
       Serial.println("  Fetching latest data...");
-      Serial.println("════════════════════════════════");
-      fetchUserSubscriptions();
-      delay(1000);
+      Serial.println("================================");
+      fetchUserSubscriptionsFromFirebase();
+      delay(2000);
       fetchCoinPrices();
     }
     
-    // Display status every 5 seconds
     if (currentTime - lastDisplayTime >= displayInterval) {
       lastDisplayTime = currentTime;
       displayStatus();
@@ -127,12 +133,30 @@ void loop() {
   }
 }
 
+void getUserIdFromAuth() {
+  Serial.println("Fetching authenticated user ID...");
+  
+  userId = app.getUid();
+  
+  if (userId != "") {
+    Serial.print("User ID: ");
+    Serial.println(userId);
+  } else {
+    Serial.println("Failed to get user ID, using hardcoded value");
+    userId = "RZCeb75gvLWRyMECnUgqQI1xgRr2";
+  }
+}
+
 void displayStatus() {
-  Serial.println("\n╔════════════════════════════════╗");
-  Serial.println("║     CRYPTO ALERT SYSTEM        ║");
-  Serial.println("╚════════════════════════════════╝");
+  Serial.println("\n================================");
+  Serial.println("     CRYPTO ALERT SYSTEM");
+  Serial.println("================================");
   Serial.print("User logged in: ");
   Serial.println(userEmail);
+  if (userId != "") {
+    Serial.print("User ID: ");
+    Serial.println(userId);
+  }
   Serial.println("\n--- Coins being monitored ---");
   
   if (subscriptionCount == 0) {
@@ -159,137 +183,209 @@ void displayStatus() {
       }
     }
   }
-  Serial.println("────────────────────────────────");
+  Serial.println("--------------------------------");
 }
 
-void fetchUserSubscriptions() {
-  Serial.println("→ Loading user subscriptions from Firebase...");
+void fetchUserSubscriptionsFromFirebase() {
+  Serial.println("Fetching user subscriptions from Firebase...");
   
-  String coins[] = {"BTC", "APC", "APPC"};
-  subscriptionCount = 3;
+  String url = String(DATABASE_URL) + "users/" + userId + "/subscriptions.json";
   
-  for (int i = 0; i < subscriptionCount; i++) {
-    subscriptions[i].symbol = coins[i];
-    subscriptions[i].hasData = false;
+  HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure();
+  http.begin(client, url);
+  int httpCode = http.GET();
+  
+  subscriptionCount = 0;
+  
+  if (httpCode > 0) {
+    String payload = http.getString();
     
-    // For demo, use hardcoded thresholds
-    // In production, you'd fetch these from Firebase in the processData callback
-    subscriptions[i].lower = 0;   // Set your lower threshold here
-    subscriptions[i].upper = 0;   // Set your upper threshold here
+    StaticJsonDocument<2048> doc;
+    DeserializationError error = deserializeJson(doc, payload);
     
-    // Example: Set thresholds for BTC
-    if (coins[i] == "BTC") {
-      subscriptions[i].lower = 60000;  // Alert if BTC drops below $60,000
-      subscriptions[i].upper = 70000;  // Alert if BTC rises above $70,000
+    if (!error) {
+      JsonObject root = doc.as<JsonObject>();
+      
+      for (JsonPair kv : root) {
+        String coinSymbol = String(kv.key().c_str());
+        JsonObject coinData = kv.value().as<JsonObject>();
+        
+        subscriptions[subscriptionCount].symbol = coinSymbol;
+        subscriptions[subscriptionCount].lower = coinData["lower"] | 0.0;
+        subscriptions[subscriptionCount].upper = coinData["upper"] | 0.0;
+        subscriptions[subscriptionCount].hasData = false;
+        subscriptions[subscriptionCount].currentPrice = 0.0;
+        
+        Serial.printf("  Loaded: %s (lower: $%.2f, upper: $%.2f)\n", 
+                     coinSymbol.c_str(), 
+                     subscriptions[subscriptionCount].lower, 
+                     subscriptions[subscriptionCount].upper);
+        
+        subscriptionCount++;
+        if (subscriptionCount >= 20) break;
+      }
+      
+      Serial.printf("Total subscriptions loaded: %d\n", subscriptionCount);
+    } else {
+      Serial.print("JSON parse error: ");
+      Serial.println(error.c_str());
     }
+  } else {
+    Serial.printf("HTTP request failed, code: %d\n", httpCode);
   }
   
-  Serial.println("✓ Subscriptions loaded");
+  http.end();
 }
 
 void fetchCoinPrices() {
-  Serial.println("→ Fetching live coin prices from CoinLayer...");
+  Serial.println("Fetching live coin prices...");
   
-  // Reset alert counter
-  alertsTriggeredCount = 0;
+  upperAlerts = 0;
+  lowerAlerts = 0;
   
   for (int i = 0; i < subscriptionCount; i++) {
-    String url = "https://api.coinlayer.com/api/live?access_key=" + 
-                 String(COINLAYER_API_KEY) + "&symbols=" + subscriptions[i].symbol;
+    const String &symbol = subscriptions[i].symbol;
+    String url = "https://api.coinlayer.com/api/live?access_key=" + String(COINLAYER_API_KEY) + "&symbols=" + symbol;
     
+    WiFiClientSecure coinClient;
+    coinClient.setInsecure();
     HTTPClient http;
-    http.begin(url);
-    int httpCode = http.GET();
-    
-    if (httpCode > 0) {
-      String payload = http.getString();
-      
-      StaticJsonDocument<1024> doc;
-      DeserializationError error = deserializeJson(doc, payload);
-      
-      if (!error && doc["success"] == true) {
-        float price = doc["rates"][subscriptions[i].symbol];
-        unsigned long timestamp = millis();
-        
-        subscriptions[i].currentPrice = price;
-        subscriptions[i].hasData = true;
-        
-        Serial.printf("  ✓ %s: $%.2f\n", subscriptions[i].symbol.c_str(), price);
-        
-        // Update Firebase with price and timestamp
-        String pricePath = "/coins/" + subscriptions[i].symbol + "/price";
-        String timePath = "/coins/" + subscriptions[i].symbol + "/updatedAt";
-        
-        Database.set<float>(aClient, pricePath.c_str(), price, processData);
-        Database.set<unsigned long>(aClient, timePath.c_str(), timestamp, processData);
-        
-        // Log to history for charting
-        String historyPath = "/coins/" + subscriptions[i].symbol + "/history/" + String(timestamp);
-        String historyData = "{\"price\":" + String(price) + ",\"timestamp\":" + String(timestamp) + "}";
-        Database.set<String>(aClient, historyPath.c_str(), historyData, processData);
-        
-        // Check alerts
-        checkAlertsAndTrigger(subscriptions[i].symbol, price);
+    bool fetchedFromCoinLayer = false;
+    if (http.begin(coinClient, url)) {
+      int httpCode = http.GET();
+      if (httpCode > 0) {
+        String payload = http.getString();
+        StaticJsonDocument<1024> doc;
+        DeserializationError error = deserializeJson(doc, payload);
+        if (!error && doc["success"] == true) {
+          float price = doc["rates"][symbol] | -1.0f;
+          unsigned long timestamp = doc["timestamp"] | 0UL;
+          if (timestamp == 0) {
+            timestamp = (unsigned long)(millis() / 1000);
+          }
+          unsigned long historyKey = timestamp * 1000UL + (millis() % 1000);
+          
+          subscriptions[i].currentPrice = price;
+          subscriptions[i].hasData = true;
+          fetchedFromCoinLayer = true;
+          
+          Serial.printf("  %s: $%.2f (from CoinLayer)\n", symbol.c_str(), price);
+          
+          String basePath = "/coins/" + symbol;
+          Database.set<float>(aClient, (basePath + "/price").c_str(), price, processData);
+          Database.set<unsigned long>(aClient, (basePath + "/updatedAt").c_str(), timestamp, processData);
+          Database.set<String>(aClient, (basePath + "/source").c_str(), String("esp32"), processData);
+
+          String historyPath = basePath + "/history/" + String(historyKey);
+          String historyData = "{\"price\":" + String(price) + ",\"timestamp\":" + String(timestamp) + "}";
+          Database.set<String>(aClient, historyPath.c_str(), historyData, processData);
+          
+          checkAlertsAndTrigger(symbol, price, timestamp);
+        }
       } else {
-        Serial.printf("  ✗ Failed to fetch %s\n", subscriptions[i].symbol.c_str());
+        Serial.printf("  CoinLayer HTTP error for %s: %d\n", symbol.c_str(), httpCode);
+      }
+      http.end();
+    } else {
+      Serial.printf("  Unable to open CoinLayer session for %s\n", symbol.c_str());
+    }
+    
+    // If CoinLayer failed, try to read price from Firebase cache
+    if (!fetchedFromCoinLayer) {
+      Serial.printf("  CoinLayer failed for %s, checking Firebase...\n", symbol.c_str());
+      String firebaseUrl = String(DATABASE_URL) + "coins/" + symbol + ".json";
+      WiFiClientSecure cacheClient;
+      cacheClient.setInsecure();
+      HTTPClient httpFB;
+      if (httpFB.begin(cacheClient, firebaseUrl)) {
+        int fbHttpCode = httpFB.GET();
+        if (fbHttpCode == 200) {
+          String fbPayload = httpFB.getString();
+          StaticJsonDocument<512> cacheDoc;
+          DeserializationError cacheErr = deserializeJson(cacheDoc, fbPayload);
+          if (!cacheErr) {
+            float cachedPrice = cacheDoc["price"] | -1.0f;
+            unsigned long cachedTimestamp = cacheDoc["updatedAt"] | 0UL;
+            if (cachedPrice > 0) {
+              subscriptions[i].currentPrice = cachedPrice;
+              subscriptions[i].hasData = true;
+              Serial.printf("  %s: $%.2f (from Firebase cache)\n", symbol.c_str(), cachedPrice);
+              checkAlertsAndTrigger(symbol, cachedPrice, cachedTimestamp);
+            } else {
+              Serial.printf("  No cached price for %s\n", symbol.c_str());
+            }
+          } else {
+            Serial.printf("  Cache parse error for %s: %s\n", symbol.c_str(), cacheErr.c_str());
+          }
+        } else {
+          Serial.printf("  Firebase HTTP error for %s: %d\n", symbol.c_str(), fbHttpCode);
+        }
+        httpFB.end();
+      } else {
+        Serial.printf("  Unable to open Firebase cache session for %s\n", symbol.c_str());
+      }
+      if (!subscriptions[i].hasData) {
+        Serial.printf("  ✗ No price data for %s\n", symbol.c_str());
       }
     }
-    http.end();
+    
     delay(500);
   }
   
-  Serial.println("✓ Price update complete");
+  Serial.println("Price update complete");
+  
+  // Trigger combined alerts if any were detected
+  if (upperAlerts > 0 || lowerAlerts > 0) {
+    triggerAlerts();
+  }
 }
 
-void checkAlertsAndTrigger(String symbol, float price) {
+void checkAlertsAndTrigger(const String &symbol, float price, unsigned long epochSeconds) {
   for (int i = 0; i < subscriptionCount; i++) {
     if (subscriptions[i].symbol == symbol) {
       if (subscriptions[i].lower > 0 && price <= subscriptions[i].lower) {
-        alertsTriggeredCount++;
-        Serial.println("\n🚨 ALERT TRIGGERED!");
+        lowerAlerts++;
+        Serial.println("\nALERT TRIGGERED!");
         Serial.printf("   %s dropped to $%.2f (below threshold: $%.2f)\n", 
                      symbol.c_str(), price, subscriptions[i].lower);
-        triggerAlert(symbol, "LOWER", alertsTriggeredCount);
-      }
-      else if (subscriptions[i].upper > 0 && price >= subscriptions[i].upper) {
-        alertsTriggeredCount++;
-        Serial.println("\n🚨 ALERT TRIGGERED!");
+        logAlert(symbol, "LOWER", price, epochSeconds);
+      } else if (subscriptions[i].upper > 0 && price >= subscriptions[i].upper) {
+        upperAlerts++;
+        Serial.println("\nALERT TRIGGERED!");
         Serial.printf("   %s rose to $%.2f (above threshold: $%.2f)\n", 
                      symbol.c_str(), price, subscriptions[i].upper);
-        triggerAlert(symbol, "UPPER", alertsTriggeredCount);
+        logAlert(symbol, "UPPER", price, epochSeconds);
       }
     }
   }
 }
 
-void triggerAlert(String symbol, String type, int totalAlerts) {
-  // Determine LED color based on alert type and count
-  int redState = LOW;
-  int greenState = LOW;
-  int blueState = LOW;
+void logAlert(const String &symbol, const String &type, float price, unsigned long epochSeconds) {
+  unsigned long alertTimestamp = epochSeconds > 0 ? epochSeconds : (unsigned long)(millis() / 1000);
+  String alertPath = "/users/" + userId + "/alerts/" + String(alertTimestamp) + "_" + symbol + "_" + type;
+  String alertData = "{\"symbol\":\"" + symbol + "\",\"type\":\"" + type +
+                     "\",\"price\":" + String(price, 4) + ",\"timestamp\":" + String(alertTimestamp) + "}";
+  Database.set<String>(aClient, alertPath.c_str(), alertData, processData);
+}
+
+void triggerAlerts() {
+  // Determine LED states based on alert counts
+  bool redState = (lowerAlerts > 0);
+  bool greenState = (upperAlerts > 0);
+  bool blueState = (upperAlerts > 1 || lowerAlerts > 1 || (upperAlerts > 0 && lowerAlerts > 0));
   
-  if (totalAlerts > 1) {
-    // Multiple alerts - BLUE LED
-    blueState = HIGH;
-    Serial.println("   [LED: BLUE - Multiple alerts]");
-  } else {
-    // Single alert - color based on type
-    if (type == "UPPER") {
-      // Price increased - GREEN LED
-      greenState = HIGH;
-      Serial.println("   [LED: GREEN - Price increased]");
-    } else {
-      // Price decreased - RED LED
-      redState = HIGH;
-      Serial.println("   [LED: RED - Price decreased]");
-    }
-  }
+  Serial.println("\n[LED ALERT]");
+  if (redState) Serial.println("   RED: Price(s) decreased");
+  if (greenState) Serial.println("   GREEN: Price(s) increased");
+  if (blueState) Serial.println("   BLUE: Multiple alerts");
   
-  // Activate LED and buzzer (3 beeps)
+  // Flash LEDs and buzzer 3 times
   for (int i = 0; i < 3; i++) {
-    digitalWrite(RED_LED_PIN, redState);
-    digitalWrite(GREEN_LED_PIN, greenState);
-    digitalWrite(BLUE_LED_PIN, blueState);
+    digitalWrite(RED_LED_PIN, redState ? HIGH : LOW);
+    digitalWrite(GREEN_LED_PIN, greenState ? HIGH : LOW);
+    digitalWrite(BLUE_LED_PIN, blueState ? HIGH : LOW);
     digitalWrite(BUZZER_PIN, HIGH);
     delay(200);
     
@@ -300,19 +396,11 @@ void triggerAlert(String symbol, String type, int totalAlerts) {
     delay(200);
   }
   
-  // Log alert to Firebase
-  String alertPath = "/users/" + userId + "/alerts/" + String(millis());
-  String alertData = "{\"symbol\":\"" + symbol + "\",\"type\":\"" + type + 
-                     "\",\"timestamp\":" + String(millis()) + "}";
-  
-  Database.set<String>(aClient, alertPath.c_str(), alertData, processData);
-  Serial.println("   Alert logged to Firebase");
+  Serial.println("   Alert sequence complete");
 }
 
 void processData(AsyncResult &aResult) {
-  if (!aResult.isResult())
-    return;
-
-  if (aResult.isError())
+  if (aResult.isError()) {
     Serial.printf("Firebase Error: %s\n", aResult.error().message().c_str());
+  }
 }

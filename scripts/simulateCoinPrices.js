@@ -82,10 +82,9 @@ async function simulateTick({ symbol, lowPrice, highPrice, thresholds }) {
 
   try {
     await patch(`coins/${symbol}`, {
-      lastPrice: price,
+      price,
       updatedAt: Math.floor(now / 1000),
-      lastClientPrice: price,
-      lastClientUpdatedAt: now
+      source: 'simulator'
     });
 
     const direction = price >= thresholds.upper ? 'upper' : price <= thresholds.lower ? 'lower' : null;
