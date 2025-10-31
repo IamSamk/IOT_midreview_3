@@ -1,0 +1,32 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "coins": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.device === true",
+      "$symbol": {
+        "lastClientPrice": {
+          ".write": "auth != null",
+          ".validate": "newData.isNumber()"
+        },
+        "lastClientUpdatedAt": {
+          ".write": "auth != null",
+          ".validate": "newData.isNumber()"
+        }
+      }
+    },
+    "alerts": {
+      "$alertId": {
+        ".read": "auth != null && data.child('uid').val() === auth.uid",
+        ".write": "auth != null && auth.token.device === true"
+      }
+    }
+  }
+}
