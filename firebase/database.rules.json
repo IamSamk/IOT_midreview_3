@@ -10,15 +10,19 @@
     },
     "coins": {
       ".read": "auth != null",
-      ".write": "auth != null && auth.token.device === true",
+      ".write": "auth != null",
       "$symbol": {
-        "lastClientPrice": {
-          ".write": "auth != null",
+        "price": {
           ".validate": "newData.isNumber()"
         },
-        "lastClientUpdatedAt": {
-          ".write": "auth != null",
+        "updatedAt": {
           ".validate": "newData.isNumber()"
+        },
+        "source": {
+          ".validate": "newData.isString()"
+        },
+        "$other": {
+          ".validate": true
         }
       }
     },
