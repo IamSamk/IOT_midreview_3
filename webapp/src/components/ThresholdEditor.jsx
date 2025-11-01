@@ -44,11 +44,11 @@ export default function ThresholdEditor({ symbol, lower, upper, onSave, onRemove
             ) : price !== null ? (
               <>
                 <strong>${price.toFixed(2)}</strong>
-                <span style={{ opacity: 0.7 }}>({source === 'device' ? 'ESP32' : 'CoinLayer client'})</span>
-                {updatedAt && <span style={{ opacity: 0.6 }}>· {formatUpdatedAt(updatedAt)}</span>}
+                <span>({source === 'device' ? 'ESP32' : 'CoinLayer client'})</span>
+                {updatedAt && <span>· {formatUpdatedAt(updatedAt)}</span>}
               </>
             ) : (
-              <span style={{ opacity: 0.6 }}>No data yet</span>
+              <span>No data yet</span>
             )}
           </p>
         </div>

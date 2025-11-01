@@ -45,16 +45,16 @@ export default function AuthGate() {
           <label htmlFor="password">Password</label>
           <input id="password" name="password" type="password" minLength={8} required onChange={handleChange} value={form.password} />
         </div>
-        {error && <span style={{ color: '#ff7b7b' }}>{error}</span>}
+        {error && (
+          <span className="form-error form-error--block" role="alert">
+            {error}
+          </span>
+        )}
         <button className="primary-button" type="submit">
           {isRegister ? 'Register' : 'Sign In'}
         </button>
       </form>
-      <button
-        style={{ marginTop: '1rem', background: 'transparent', color: '#7f5af0', border: 'none' }}
-        type="button"
-        onClick={() => setIsRegister((prev) => !prev)}
-      >
+      <button className="link-button form-toggle" type="button" onClick={() => setIsRegister((prev) => !prev)}>
         {isRegister ? 'Already have an account? Sign in' : "Don't have an account? Create one"}
       </button>
     </div>

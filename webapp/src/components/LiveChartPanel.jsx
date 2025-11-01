@@ -96,10 +96,8 @@ export default function LiveChartPanel({ availableSymbols }) {
   const chartData = useMemo(() => {
     const labels = entries.map((entry) => entry.symbol);
     const data = entries.map((entry) => (entry.price !== null ? Number(entry.price.toFixed(2)) : null));
-    const background = entries.map((entry) =>
-      entry.source === 'device' ? 'rgba(44, 177, 188, 0.7)' : 'rgba(127, 90, 240, 0.7)'
-    );
-    const border = background.map((color) => color.replace('0.7', '1'));
+    const palette = ['rgba(255, 99, 132, 0.75)', 'rgba(54, 162, 235, 0.75)', 'rgba(75, 192, 192, 0.75)'];
+    const borders = ['rgb(255, 99, 132)', 'rgb(54, 162, 235)', 'rgb(75, 192, 192)'];
 
     return {
       labels,
@@ -107,11 +105,11 @@ export default function LiveChartPanel({ availableSymbols }) {
         {
           label: 'Current price (USD)',
           data,
-          backgroundColor: background,
-          borderColor: border,
-          borderWidth: 1.5,
-          borderRadius: 8,
-          barThickness: 36
+          backgroundColor: entries.map((_, index) => palette[index % palette.length]),
+          borderColor: entries.map((_, index) => borders[index % borders.length]),
+          borderWidth: 1,
+          borderRadius: 6,
+          barThickness: 34
         }
       ]
     };
@@ -122,7 +120,7 @@ export default function LiveChartPanel({ availableSymbols }) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { position: 'top' },
+        legend: { position: 'top', labels: { color: '#333', usePointStyle: true } },
         tooltip: {
           callbacks: {
             label: formatTooltipLabel
@@ -131,15 +129,15 @@ export default function LiveChartPanel({ availableSymbols }) {
       },
       scales: {
         x: {
-          ticks: { color: 'rgba(255,255,255,0.75)' },
+          ticks: { color: '#333' },
           grid: { display: false }
         },
         y: {
           ticks: {
-            color: 'rgba(255,255,255,0.65)',
+            color: '#444',
             callback: (value) => `$${value}`
           },
-          grid: { color: 'rgba(255,255,255,0.08)' }
+          grid: { color: '#e8e8e8' }
         }
       }
     }),
@@ -149,37 +147,38 @@ export default function LiveChartPanel({ availableSymbols }) {
   const emptyState = !availableSymbols?.length;
   const noData = !loading && entries.every((entry) => entry.price === null);
   const lastRefreshLabel = lastRefresh ? new Date(lastRefresh).toLocaleTimeString() : null;
+  const statusText = loading ? 'Fetching latest quotes…' : 'Updates sync from ESP32 or CoinLayer cache';
+  const statusWithRefresh = lastRefreshLabel ? `${statusText} • Last refresh ${lastRefreshLabel}` : statusText;
 
   return (
     <section className="card">
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h3 style={{ margin: 0 }}>Portfolio snapshot</h3>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-          <span style={{ opacity: 0.65, fontSize: '0.9rem' }}>
-            {loading ? 'Fetching latest quotes…' : 'Updates sync from ESP32 or CoinLayer cache'}
-            {lastRefreshLabel ? ` • Last refresh ${lastRefreshLabel}` : ''}
-          </span>
-          <button
-            className="primary-button"
-            type="button"
-            onClick={handleRefresh}
-            disabled={refreshing || !availableSymbols?.length}
-          >
-            {refreshing ? 'Refreshing…' : 'Refresh prices'}
-          </button>
+      <div className="card__header">
+        <div>
+          <h3 className="card__title">Portfolio snapshot</h3>
+          <p className="card__meta">{statusWithRefresh}</p>
         </div>
-      </header>
-      <div style={{ minHeight: '280px' }}>
+        <button
+          className="primary-button"
+          type="button"
+          onClick={handleRefresh}
+          disabled={refreshing || !availableSymbols?.length}
+        >
+          {refreshing ? 'Refreshing…' : 'Refresh prices'}
+        </button>
+      </div>
+      <div className="chart-area">
         {emptyState ? (
-          <span style={{ opacity: 0.6 }}>Add coins to your watchlist to preview price distribution.</span>
+          <span className="muted-text">Add coins to your watchlist to preview price distribution.</span>
         ) : noData ? (
-          <span style={{ opacity: 0.6 }}>Waiting for the first price snapshot. Hold tight!</span>
+          <span className="muted-text">Waiting for the first price snapshot. Hold tight!</span>
         ) : (
           <Bar height={120} data={chartData} options={chartOptions} />
         )}
       </div>
       {refreshError && (
-        <div style={{ marginTop: '0.75rem', color: '#ff7b7b' }}>{refreshError}</div>
+        <div className="form-error form-error--block" role="alert">
+          {refreshError}
+        </div>
       )}
     </section>
   );

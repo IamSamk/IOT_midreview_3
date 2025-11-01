@@ -6,15 +6,15 @@ export default function SubscriptionsGrid({ subscriptions, onUpdate, onRemove })
   if (!entries.length) {
     return (
       <div className="card">
-        <h3>No coins subscribed yet</h3>
-        <p style={{ opacity: 0.7 }}>Use the search panel to add coins and configure price thresholds.</p>
+        <h3 className="card__title">No coins yet</h3>
+        <p className="card__meta">Use the search panel to add coins and configure price thresholds.</p>
       </div>
     );
   }
 
   return (
-    <section>
-      <h2 style={{ marginBottom: '1rem' }}>Your watchlist</h2>
+    <section className="watchlist-section">
+      <h2 className="section-heading">Your watchlist</h2>
       <div className="cards-grid">
         {entries.map(([symbol, thresholds]) => (
           <ThresholdEditor
