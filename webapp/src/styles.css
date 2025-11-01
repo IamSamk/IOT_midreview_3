@@ -195,7 +195,8 @@ textarea {
 .dashboard-column {
   display: grid;
   gap: 1.5rem;
-  align-content: start;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: stretch;
 }
 
 .card {
@@ -203,46 +204,13 @@ textarea {
   border-radius: 1rem;
   border: 1px solid #e4e4e4;
   padding: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  box-shadow: 0 10px 24px rgba(17, 17, 17, 0.05);
-}
-
-.card__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
   gap: 1rem;
-}
-
-.card__title {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-}
-
-.card__meta {
-  margin: 0;
-  font-size: 0.95rem;
-  color: #555;
-}
-
-.cards-grid {
-  display: grid;
-  gap: 1.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-}
-
-.watchlist-section {
-  display: grid;
-  gap: 1.5rem;
-}
-
-.section-heading {
-  margin: 0;
-  font-size: 1.3rem;
-  font-weight: 600;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(16px);
+  height: 100%;
 }
 
 .chip {
@@ -374,6 +342,52 @@ textarea {
 .scroll-area {
   max-height: 320px;
   overflow-y: auto;
+}
+
+.threshold-card {
+  min-height: 260px;
+}
+
+.threshold-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.threshold-card__meta {
+  opacity: 0.75;
+  margin: 0.35rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.threshold-card__remove {
+  background: transparent;
+  border: none;
+  color: #ff7b7b;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+
+.threshold-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: auto;
+}
+
+.threshold-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.95rem;
+}
+
+.threshold-form .primary-button {
+  width: 100%;
 }
 
 @media (max-width: 960px) {

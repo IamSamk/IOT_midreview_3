@@ -36,7 +36,7 @@ export default function ThresholdEditor({ symbol, lower, upper, onSave, onRemove
     <article className="card threshold-card">
       <header className="threshold-card__header">
         <div>
-          <h3 className="threshold-card__headline">{symbol}</h3>
+          <h3 style={{ margin: 0 }}>{symbol}</h3>
           <p className="threshold-card__meta">
             <span>Last price:</span>
             {loading ? (
@@ -52,7 +52,7 @@ export default function ThresholdEditor({ symbol, lower, upper, onSave, onRemove
             )}
           </p>
         </div>
-        <button type="button" onClick={onRemove} className="link-button">
+        <button type="button" onClick={onRemove} className="threshold-card__remove">
           Remove
         </button>
       </header>
