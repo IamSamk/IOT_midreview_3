@@ -3,7 +3,7 @@
 /**
  * Simulated price pumper for Firebase Realtime Database.
  *
- * coin1 flips every 3s; coin2 every 4s; coin3 every 10s.
+ * coin1 flips every 10s; coin2 every 20s; coin3 every 30s.
  * Prices alternate across configured lower/upper thresholds to trigger alerts.
  */
 
@@ -19,21 +19,21 @@ if (!DATABASE_URL || !DATABASE_SECRET) {
 const coins = [
   {
     symbol: 'coin1',
-    intervalMs: 3000,
+    intervalMs: 10000,
     lowPrice: 27500,
     highPrice: 34500,
     thresholds: { lower: 28000, upper: 34000 }
   },
   {
     symbol: 'coin2',
-    intervalMs: 4000,
+    intervalMs: 20000,
     lowPrice: 1800,
     highPrice: 2250,
     thresholds: { lower: 1900, upper: 2200 }
   },
   {
     symbol: 'coin3',
-    intervalMs: 10000,
+    intervalMs: 30000,
     lowPrice: 0.45,
     highPrice: 0.85,
     thresholds: { lower: 0.5, upper: 0.8 }
