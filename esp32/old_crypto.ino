@@ -50,7 +50,6 @@ bool inWaitForCard = true; // start in wait state
 struct Coin {
   String symbol;
   float price;
-  float lastPrice;  // NEW - track previous price
   float lower, upper;
   bool subscribed;
   bool triggered;
@@ -58,9 +57,9 @@ struct Coin {
   bool upperLatched;  // NEW
 };
 Coin simCoins[3] = {
-    {"coin1", 32000, 32000, 0, 0, false, false, false, false},  // added lastPrice = price
-    {"coin2", 2100, 2100, 0, 0, false, false, false, false},
-    {"coin3", 0.65, 0.65, 0, 0, false, false, false, false}
+    {"coin1", 32000, 0, 0, false, false, false, false},
+    {"coin2", 2100, 0, 0, false, false, false, false},
+    {"coin3", 0.65, 0, 0, false, false, false, false}
 };
 const int simCount = 3;
 unsigned long lastCoin1Time = 0, lastCoin2Time = 0, lastCoin3Time = 0;
@@ -68,7 +67,6 @@ bool coin1Up = true, coin2Up = true, coin3Up = true;
 struct MarketCoin {
   String symbol;
   float price;
-  float lastPrice;  // NEW
   bool subscribed;
   float lower, upper;
   bool triggered;
@@ -128,14 +126,11 @@ void fetchCoinsFromAPI() {
       String sym = keyCoins[i];
       if (rates.containsKey(sym)) {
         marketCoins[marketCount].symbol = sym;
-        marketCoins[marketCount].lastPrice = rates[sym].as<float>();  // INIT lastPrice
         marketCoins[marketCount].price = rates[sym].as<float>();
         marketCoins[marketCount].subscribed = false;
         marketCoins[marketCount].lower = 0;
         marketCoins[marketCount].upper = 0;
         marketCoins[marketCount].triggered = false;
-        marketCoins[marketCount].lowerLatched = false;  // INIT latches
-        marketCoins[marketCount].upperLatched = false;
         marketCount++;
       }
     }
@@ -158,40 +153,29 @@ struct UserCoinPrefs {
 };
 UserCoinPrefs userPrefs;
 
-// Fix #2: Robust preference loading - match by symbol, not index (replace loadUserCoinPrefs, line ~136)
 void loadUserCoinPrefs() {
   String path = "/users/" USER_UID "/subscriptions";
   if (Firebase.RTDB.getJSON(&fbdo, path)) {
     FirebaseJson &json = fbdo.jsonObject();
-    
-    // Load sim coins by symbol
     for (int i = 0; i < simCount; i++) {
       String key = simCoins[i].symbol;
       FirebaseJsonData result;
-      if (json.get(result, key + "/on")) {
-        simCoins[i].subscribed = result.boolValue;
-      }
-      if (json.get(result, key + "/lower")) {
-        simCoins[i].lower = result.to<float>();
-      }
-      if (json.get(result, key + "/upper")) {
-        simCoins[i].upper = result.to<float>();
-      }
+      json.get(result, key + "/on"); userPrefs.subs[i] = result.boolValue;
+      json.get(result, key + "/lower"); userPrefs.lowers[i] = result.to<float>();
+      json.get(result, key + "/upper"); userPrefs.uppers[i] = result.to<float>();
+      simCoins[i].subscribed = userPrefs.subs[i];
+      simCoins[i].lower = userPrefs.lowers[i];
+      simCoins[i].upper = userPrefs.uppers[i];
     }
-    
-    // Load market coins by symbol (not by index order)
     for (int i = 0; i < marketCount; i++) {
       String key = marketCoins[i].symbol;
       FirebaseJsonData result;
-      if (json.get(result, key + "/on")) {
-        marketCoins[i].subscribed = result.boolValue;
-      }
-      if (json.get(result, key + "/lower")) {
-        marketCoins[i].lower = result.to<float>();
-      }
-      if (json.get(result, key + "/upper")) {
-        marketCoins[i].upper = result.to<float>();
-      }
+      json.get(result, key + "/on"); userPrefs.subs[simCount + i] = result.boolValue;
+      json.get(result, key + "/lower"); userPrefs.lowers[simCount + i] = result.to<float>();
+      json.get(result, key + "/upper"); userPrefs.uppers[simCount + i] = result.to<float>();
+      marketCoins[i].subscribed = userPrefs.subs[simCount + i];
+      marketCoins[i].lower = userPrefs.lowers[simCount + i];
+      marketCoins[i].upper = userPrefs.uppers[simCount + i];
     }
   }
 }
@@ -261,7 +245,7 @@ void drawMainMenu() {
 void drawCoinsMenu() {
   buildCurrentCoinsBuffer();
   lcd.clear();
-  for (int row = 0; row < 3; ++row) {  // CHANGED: only use rows 0-2 (3 coins visible)
+  for (int row = 0; row < 4; ++row) {
     int idx = menuScroll + row;
     if (idx >= numVisible) break;
     int coinIdx = visibleIndices[idx];
@@ -278,7 +262,7 @@ void drawCoinsMenu() {
 void drawChooseCoins() {
   buildChooseCoinsBuffer();
   lcd.clear();
-  for (int row = 0; row < 3; ++row) {  // CHANGED: only 3 rows for coins
+  for (int row = 0; row < 4; ++row) {
     int idx = menuScroll + row;
     if (idx >= numVisible) break;
     int coinIdx = visibleIndices[idx];
@@ -338,68 +322,54 @@ void checkAlerts() {
   for (int i = 0; i < simCount; i++) {
     simCoins[i].triggered = false;
     if (simCoins[i].subscribed) {
-      // Lower threshold: only trigger when CROSSING DOWN
-      if (simCoins[i].lower > 0) {
-        if (simCoins[i].lastPrice >= simCoins[i].lower && simCoins[i].price < simCoins[i].lower) {
-          if (!simCoins[i].lowerLatched) {
-            simCoins[i].triggered = true;
-            simCoins[i].lowerLatched = true;
-            alertMsg[alertCount++] = simCoins[i].symbol + " <L " + String(simCoins[i].lower,2);
-          }
+      // Lower threshold
+      if (simCoins[i].lower > 0 && simCoins[i].price < simCoins[i].lower) {
+        if (!simCoins[i].lowerLatched) {  // Only trigger once
+          simCoins[i].triggered = true;
+          simCoins[i].lowerLatched = true;
+          alertMsg[alertCount++] = simCoins[i].symbol + " <L " + String(simCoins[i].lower,2);
         }
-        // Reset latch when price goes back above lower
-        if (simCoins[i].price >= simCoins[i].lower) {
-          simCoins[i].lowerLatched = false;
-        }
+      } else if (simCoins[i].price >= simCoins[i].lower) {
+        simCoins[i].lowerLatched = false;  // Reset when price recovers
       }
       
-      // Upper threshold: only trigger when CROSSING UP
-      if (simCoins[i].upper > 0) {
-        if (simCoins[i].lastPrice <= simCoins[i].upper && simCoins[i].price > simCoins[i].upper) {
-          if (!simCoins[i].upperLatched) {
-            simCoins[i].triggered = true;
-            simCoins[i].upperLatched = true;
-            alertMsg[alertCount++] = simCoins[i].symbol + " >U " + String(simCoins[i].upper,2);
-          }
+      // Upper threshold
+      if (simCoins[i].upper > 0 && simCoins[i].price > simCoins[i].upper) {
+        if (!simCoins[i].upperLatched) {
+          simCoins[i].triggered = true;
+          simCoins[i].upperLatched = true;
+          alertMsg[alertCount++] = simCoins[i].symbol + " >U " + String(simCoins[i].upper,2);
         }
-        // Reset latch when price goes back below upper
-        if (simCoins[i].price <= simCoins[i].upper) {
-          simCoins[i].upperLatched = false;
-        }
+      } else if (simCoins[i].price <= simCoins[i].upper) {
+        simCoins[i].upperLatched = false;
       }
       
       if (alertCount == 4) break;
     }
   }
   
-  // Check market coins (same crossing logic)
+  // Check market coins
   for (int i = 0; i < marketCount; i++) {
     marketCoins[i].triggered = false;
     if (marketCoins[i].subscribed) {
-      if (marketCoins[i].lower > 0) {
-        if (marketCoins[i].lastPrice >= marketCoins[i].lower && marketCoins[i].price < marketCoins[i].lower) {
-          if (!marketCoins[i].lowerLatched) {
-            marketCoins[i].triggered = true;
-            marketCoins[i].lowerLatched = true;
-            alertMsg[alertCount++] = marketCoins[i].symbol + " <L " + String(marketCoins[i].lower,2);
-          }
+      if (marketCoins[i].lower > 0 && marketCoins[i].price < marketCoins[i].lower) {
+        if (!marketCoins[i].lowerLatched) {
+          marketCoins[i].triggered = true;
+          marketCoins[i].lowerLatched = true;
+          alertMsg[alertCount++] = marketCoins[i].symbol + " <L " + String(marketCoins[i].lower,2);
         }
-        if (marketCoins[i].price >= marketCoins[i].lower) {
-          marketCoins[i].lowerLatched = false;
-        }
+      } else if (marketCoins[i].price >= marketCoins[i].lower) {
+        marketCoins[i].lowerLatched = false;
       }
       
-      if (marketCoins[i].upper > 0) {
-        if (marketCoins[i].lastPrice <= marketCoins[i].upper && marketCoins[i].price > marketCoins[i].upper) {
-          if (!marketCoins[i].upperLatched) {
-            marketCoins[i].triggered = true;
-            marketCoins[i].upperLatched = true;
-            alertMsg[alertCount++] = marketCoins[i].symbol + " >U " + String(marketCoins[i].upper,2);
-          }
+      if (marketCoins[i].upper > 0 && marketCoins[i].price > marketCoins[i].upper) {
+        if (!marketCoins[i].upperLatched) {
+          marketCoins[i].triggered = true;
+          marketCoins[i].upperLatched = true;
+          alertMsg[alertCount++] = marketCoins[i].symbol + " >U " + String(marketCoins[i].upper,2);
         }
-        if (marketCoins[i].price <= marketCoins[i].upper) {
-          marketCoins[i].upperLatched = false;
-        }
+      } else if (marketCoins[i].price <= marketCoins[i].upper) {
+        marketCoins[i].upperLatched = false;
       }
       
       if (alertCount == 4) break;
@@ -411,12 +381,143 @@ void checkAlerts() {
     drawAlert();
   }
 }
+
+// ==== MAIN MENU NAVIGATION HANDLER ====
+void handleMenu(char key) {
+  lastCardSignalTime = millis();  // FIX: reset timeout on any key
+  switch(menuState) {
+    case STATE_WAIT_CARD: break;
+    case STATE_WELCOME:   menuState = STATE_MAIN_MENU; menuCursor = 0; drawMainMenu(); break;
+
+    case STATE_MAIN_MENU:
+      if(key=='A'&&menuCursor>0){menuCursor--;drawMainMenu();}
+      else if(key=='B'&&menuCursor<2){menuCursor++;drawMainMenu();}
+      else if(key=='*'){
+        if(menuCursor==0){menuState=STATE_COINS;menuCursor=0;menuScroll=0;drawCoinsMenu();}
+        else if(menuCursor==1){menuState=STATE_CHOOSE_COIN;menuCursor=0;menuScroll=0;drawChooseCoins();}
+        else{menuState=STATE_KEYMAP;drawKeyMapping();}
+      }
+      break;
+
+    case STATE_COINS: {
+      buildCurrentCoinsBuffer();
+      if(numVisible==0) { menuCursor=0; menuScroll=0; drawCoinsMenu(); break;}
+      if(key=='A'){
+        if(menuCursor>0){menuCursor--;}
+        else if(menuScroll>0) {menuScroll--;}
+        drawCoinsMenu();
+      }
+      else if(key=='B'){
+        int shown = (numVisible-menuScroll >= 4) ? 3 : (numVisible-menuScroll-1);
+        if(menuCursor<shown){menuCursor++;}
+        else if(menuScroll+4<numVisible){menuScroll++;}
+        drawCoinsMenu();
+      }
+      else if(key=='*'){
+        selectedCoin = menuCursor;  // FIX: remove menuScroll here, it's already in drawCoinDetail
+        menuState = STATE_COIN_DETAIL; 
+        menuCursor=0; 
+        drawCoinDetail(selectedCoin);  // PASS selectedCoin, not menuCursor
+      }
+      else if(key=='#'){menuState=STATE_MAIN_MENU;menuCursor=0;drawMainMenu();}
+      break;
+    }
+    case STATE_COIN_DETAIL: {
+      int arrIdx = menuScroll + selectedCoin;
+      if (arrIdx >= numVisible) break;
+      int coinIdx = visibleIndices[arrIdx];  // ADD THIS LINE
+      Coin* c = (visibleTypes[arrIdx]==0) ? &simCoins[coinIdx] : (Coin*)&marketCoins[coinIdx];
+      if(key=='A'&&menuCursor>0){menuCursor--; drawCoinDetail(selectedCoin);}
+      else if(key=='B'&&menuCursor<2){menuCursor++; drawCoinDetail(selectedCoin);}
+      else if(key=='*'){
+        if(menuCursor==0){c->subscribed=false;saveUserCoinPref(visibleIndices[arrIdx],visibleTypes[arrIdx]==0);}
+        else if(menuCursor==1){menuState=STATE_SET_LIMIT;limitInput="";settingLower=true;settingUpper=false;drawLimitInput("Set Lower Limit:");}
+        else{menuState=STATE_SET_LIMIT;limitInput="";settingLower=false;settingUpper=true;drawLimitInput("Set Upper Limit:");}
+      }
+      else if (key == '#'){menuState=STATE_COINS;menuCursor=0;drawCoinsMenu();}
+      break;
+    }
+    case STATE_SET_LIMIT: {
+      int arrIdx = menuScroll + selectedCoin;
+      Coin* c = (visibleTypes[arrIdx]==0) ? &simCoins[visibleIndices[arrIdx]] : (Coin*)&marketCoins[visibleIndices[arrIdx]];
+      if ((key >= '0' && key <= '9') || key == '#') {
+        if (limitInput.length() < 8) {
+          limitInput += (key == '#') ? "." : String(key);
+          drawLimitInput(settingLower ? "Set Lower Limit:" : "Set Upper Limit:");
+        }
+      }
+      else if (key == '*') {
+        if (settingLower) c->lower = limitInput.toFloat();
+        else if (settingUpper) c->upper = limitInput.toFloat();
+        saveUserCoinPref(visibleIndices[arrIdx],visibleTypes[arrIdx]==0);
+        settingLower = settingUpper = false; limitInput = "";
+        menuState=STATE_COIN_DETAIL;menuCursor=0;drawCoinDetail(selectedCoin);
+      }
+      else if (key == '#') {
+        menuState = STATE_COIN_DETAIL; menuCursor = 0; drawCoinDetail(selectedCoin);
+      }
+      break;
+    }
+    case STATE_CHOOSE_COIN: {
+      buildChooseCoinsBuffer();
+      if(numVisible==0) {menuCursor=0;menuScroll=0;drawChooseCoins(); break;}
+      if(key=='A'){
+        if(menuCursor>0){menuCursor--;}
+        else if(menuScroll>0){menuScroll--;}
+        drawChooseCoins();
+      }
+      else if(key=='B'){
+        int shown = (numVisible-menuScroll >= 4) ? 3 : (numVisible-menuScroll-1);
+        if(menuCursor<shown){menuCursor++;}
+        else if(menuScroll+4<numVisible){menuScroll++;}
+        drawChooseCoins();
+      }
+      else if(key=='*'){
+        int arrIdx = menuScroll + menuCursor;
+        if(visibleTypes[arrIdx]==0)
+          simCoins[visibleIndices[arrIdx]].subscribed = !simCoins[visibleIndices[arrIdx]].subscribed;
+        else
+          marketCoins[visibleIndices[arrIdx]].subscribed = !marketCoins[visibleIndices[arrIdx]].subscribed;
+        saveUserCoinPref(visibleIndices[arrIdx], visibleTypes[arrIdx]==0);
+        
+        // REBUILD buffer so removed coin disappears immediately
+        menuCursor = 0;
+        menuScroll = 0;
+        buildChooseCoinsBuffer();
+        drawChooseCoins();
+      }
+      else if(key=='#'){menuState=STATE_MAIN_MENU;menuCursor=0;drawMainMenu();}
+      break;
+    }
+    case STATE_KEYMAP: if(key=='*'||key=='#'){menuState=STATE_MAIN_MENU;menuCursor=0;drawMainMenu();} break;
+    case STATE_LOGOUT_CONFIRM:
+      if((key=='A'||key=='B')){menuCursor=1-menuCursor;drawLogoutConfirm();}
+      else if(key=='*'){
+        if(menuCursor==0){
+          loggedIn=false;currentID="";currentUID="";currentName="";menuState=STATE_WAIT_CARD;
+          lcd.clear();lcd.setCursor(2,0);lcd.print("RFID Login System");lcd.setCursor(0,2);lcd.print("Please tap card...");
+        }
+        else {menuState=STATE_MAIN_MENU;menuCursor=0;drawMainMenu();}
+      }
+      break;
+    case STATE_ALERT:
+    // User acknowledged alerts – clear them
+    alertCount = 0;
+    for (int i = 0; i < simCount; i++) simCoins[i].triggered = false;
+    for (int i = 0; i < marketCount; i++) marketCoins[i].triggered = false;
+
+    menuState = STATE_MAIN_MENU;
+    menuCursor = 0;
+    drawMainMenu();
+    break;
+
+  }
+}
 void fetchSimCoinsFromFirebase() {
     for (int i = 0; i < 3; i++) {
         String path = "/coins/" + simCoins[i].symbol + "/price";
         if (Firebase.RTDB.getFloat(&fbdo, path)) {
-            simCoins[i].lastPrice = simCoins[i].price;  // SAVE old price BEFORE updating
-            simCoins[i].price = fbdo.floatData();       // NOW update to new price
+            simCoins[i].price = fbdo.floatData();
         }
     }
 }
@@ -459,54 +560,18 @@ void loop() {
       currentID = "";
       currentUID = "";
       currentName = "";
-      
-      // ONLY change state and redraw if not already waiting
-      if (menuState != STATE_WAIT_CARD) {
-        menuState = STATE_WAIT_CARD;
-        inWaitForCard = true;
-        lcd.clear();
-        lcd.setCursor(2,0); lcd.print("RFID Login System");
-        lcd.setCursor(0,2); lcd.print("Please tap card...");
-      }
+      menuState = STATE_WAIT_CARD;
+      inWaitForCard = true;
+      lcd.clear();
+      lcd.setCursor(2,0); lcd.print("RFID Login System");
+      lcd.setCursor(0,2); lcd.print("Please tap card...");
     }
   }
   
   // CoinLayer API market update every 1 minute
   if(millis()-lastCoinFetch>60000UL) fetchCoinsFromAPI();
   // RFID login events (always ready)
-  // Auto-login after 4s if no card scanned (for testing)
-  static unsigned long waitStartTime = 0;
-  if (menuState == STATE_WAIT_CARD && inWaitForCard) {
-    if (waitStartTime == 0) {
-      waitStartTime = millis();  // Start countdown
-    }
-    if (millis() - waitStartTime > 4000UL) {  // CHANGED: 4 seconds
-      // Auto-login as Samarth
-      currentUID = "AUTO_LOGIN";
-      currentName = "Samarth";
-      currentID = "1RUA24CSE399";
-      currentEmail = USER_EMAIL;
-      loggedIn = true;
-      loadUserCoinPrefs();
-      
-      menuState = STATE_WELCOME; 
-      inWaitForCard = false;
-      waitStartTime = 0;  // Reset for next login cycle
-      lcd.clear();
-      lcd.setCursor(0,0); lcd.print("Welcome " + currentName);
-      // REMOVED: lcd.setCursor(0,1); lcd.print("(Auto-login)");
-      lcd.setCursor(0,2); lcd.print(">Press any key...");
-      lastCardSignalTime = millis();
-      delay(1500);
-      return;
-    }
-  } else {
-    waitStartTime = 0;  // Reset timer when not on wait screen
-  }
-  
-  // Original RFID scan (still works if card tapped before 10s)
   if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
-    waitStartTime = 0;  // Reset auto-login timer
     String uid = "";
     for (byte i = 0; i < rfid.uid.size; i++) {
       uid += (rfid.uid.uidByte[i]<0x10 ? "0" : ""); 
@@ -515,57 +580,43 @@ void loop() {
     }
     uid.toUpperCase();
 
-    currentUID = uid;
-    currentName = "";
-    currentID = "";
-    currentEmail = "";
-    loggedIn = false;
+currentUID = uid;
+currentName = "";
+currentID = "";
+currentEmail = "";
+loggedIn = false;
+// any successful read is card activity
     lastCardSignalTime = millis();
-    
-    if (uid == "13 BA 90 22") {
-        currentName = "Samarth";
-        currentID = "1RUA24CSE399";
-        currentEmail = USER_EMAIL;
-        loggedIn = true;
-    } else if (uid == "03 84 C6 2A") {
-        currentName = "Samarth";
-        currentID = "1RUA24CSE399";
-        currentEmail = USER_EMAIL;
-        loggedIn = true;
-        loadUserCoinPrefs();
-    }
+    inWaitForCard = false;
+if (uid == "13 BA 90 22") {  // Locked card, use UID only
+    currentName = "Samarth";
+    currentID = "1RUA24CSE399";
+    currentEmail = USER_EMAIL;
+    loggedIn = true;
+    // Don't call loadUserCoinPrefs(); memory read blocked on this card
+} else if (uid == "03 84 C6 2A") {  // Default key card — full access
+    currentName = "Samarth";
+    currentID = "1RUA24CSE399";
+    currentEmail = USER_EMAIL;
+    loggedIn = true;
+    loadUserCoinPrefs();  // Read preferences from card/db
+}
 
+    lcd.clear();
     if(!loggedIn){
-      lcd.clear();
-      lcd.setCursor(0,0); lcd.print("Unknown Card");
-      lcd.setCursor(0,1); lcd.print("UID:");
-      lcd.setCursor(0,2); lcd.print(currentUID);
-      lcd.setCursor(0,3); lcd.print("Access Denied!");
-      delay(1750);
-      
-      if (menuState != STATE_WAIT_CARD) {
-        menuState = STATE_WAIT_CARD;
-        inWaitForCard = true;
-        lcd.clear();
-        lcd.setCursor(2,0); lcd.print("RFID Login System");
-        lcd.setCursor(0,2); lcd.print("Please tap card...");
-      }
-    } else if(menuState != STATE_WAIT_CARD){
-      menuState = STATE_LOGOUT_CONFIRM;
-      menuCursor = 0;
-      drawLogoutConfirm();
-    } else {
-      menuState = STATE_WELCOME; 
-      inWaitForCard = false;
-      lcd.clear();
+      lcd.setCursor(0,0);lcd.print("Unknown Card");lcd.setCursor(0,1);lcd.print("UID:");lcd.setCursor(0,2);lcd.print(currentUID);
+      lcd.setCursor(0,3);lcd.print("Access Denied!");
+      delay(1750);lcd.clear();lcd.setCursor(0,1);lcd.print("Please tap card...");
+      menuState=STATE_WAIT_CARD;
+      inWaitForCard = true;     
+    } else if(menuState!=STATE_WAIT_CARD){
+      menuState=STATE_LOGOUT_CONFIRM;menuCursor=0;drawLogoutConfirm();
+    } else{
+      menuState=STATE_WELCOME; lcd.clear();
       lcd.setCursor(0,0); lcd.print("Welcome " + currentName);
       lcd.setCursor(0,2); lcd.print(">Press any key...");
     }
-    
-    rfid.PICC_HaltA();
-    rfid.PCD_StopCrypto1();
-    delay(800);
-    return;
+    rfid.PICC_HaltA();rfid.PCD_StopCrypto1();delay(800);return;
   }
   
   // Only check alerts when not on ALERT screen itself
@@ -592,147 +643,4 @@ void drawLogoutConfirm() {
   lcd.clear();
   lcd.setCursor(0,1); lcd.print("Logout & save info?");
   lcd.setCursor(2,3); lcd.print(menuCursor==0?">Yes     No":" Yes    >No");
-}
-
-// Add this BEFORE loop() function (around line 410):
-void handleMenu(char key) {
-  lastCardSignalTime = millis();  // reset timeout on any key
-  
-  switch(menuState) {
-    case STATE_WELCOME:
-      menuState = STATE_MAIN_MENU;
-      menuCursor = 0;
-      drawMainMenu();
-      break;
-      
-    case STATE_MAIN_MENU:
-      if(key=='A' && menuCursor>0) { menuCursor--; drawMainMenu(); }
-      else if(key=='B' && menuCursor<2) { menuCursor++; drawMainMenu(); }
-      else if(key=='*') {
-        if(menuCursor==0) { menuState=STATE_COINS; menuCursor=0; menuScroll=0; drawCoinsMenu(); }
-        else if(menuCursor==1) { menuState=STATE_CHOOSE_COIN; menuCursor=0; menuScroll=0; buildChooseCoinsBuffer(); drawChooseCoins(); }
-        else { menuState=STATE_KEYMAP; drawKeyMapping(); }
-      }
-      break;
-      
-    case STATE_COINS: {
-      buildCurrentCoinsBuffer();
-      if(numVisible==0) { menuCursor=0; menuScroll=0; drawCoinsMenu(); break;}
-      if(key=='A'){
-        if(menuCursor>0){menuCursor--;}
-        else if(menuScroll>0) {menuScroll--;}
-        drawCoinsMenu();
-      }
-      else if(key=='B'){
-        // FIX: max cursor is 2 (3rd row), then scroll kicks in
-        if(menuCursor < 2 && (menuScroll + menuCursor + 1) < numVisible){
-          menuCursor++;
-        }
-        else if(menuScroll + 3 < numVisible){  // CHANGED: scroll when we have 4+ coins
-          menuScroll++;
-        }
-        drawCoinsMenu();
-      }
-      else if(key=='*'){
-        selectedCoin = menuCursor;
-        menuState = STATE_COIN_DETAIL; 
-        menuCursor=0; 
-        drawCoinDetail(selectedCoin);
-      }
-      else if(key=='#'){menuState=STATE_MAIN_MENU;menuCursor=0;drawMainMenu();}
-      break;
-    }
-    
-    case STATE_COIN_DETAIL: {
-      int arrIdx = menuScroll + selectedCoin;
-      if (arrIdx >= numVisible) break;
-      int coinIdx = visibleIndices[arrIdx];
-      Coin* c = (visibleTypes[arrIdx]==0) ? &simCoins[coinIdx] : (Coin*)&marketCoins[coinIdx];
-      if(key=='A'&&menuCursor>0){menuCursor--; drawCoinDetail(selectedCoin);}
-      else if(key=='B'&&menuCursor<2){menuCursor++; drawCoinDetail(selectedCoin);}
-      else if(key=='*'){
-        if(menuCursor==0){c->subscribed=false;saveUserCoinPref(visibleIndices[arrIdx],visibleTypes[arrIdx]==0);}
-        else if(menuCursor==1){menuState=STATE_SET_LIMIT;limitInput="";settingLower=true;settingUpper=false;drawLimitInput("Set Lower Limit:");}
-        else{menuState=STATE_SET_LIMIT;limitInput="";settingLower=false;settingUpper=true;drawLimitInput("Set Upper Limit:");}
-      }
-      else if (key == '#'){menuState=STATE_COINS;menuCursor=0;drawCoinsMenu();}
-      break;
-    }
-    
-    case STATE_SET_LIMIT: {
-      if(key>='0' && key<='9') { limitInput += key; drawLimitInput(settingLower?"Set Lower:":"Set Upper:"); }
-      else if(key=='#') { limitInput += '.'; drawLimitInput(settingLower?"Set Lower:":"Set Upper:"); }
-      else if(key=='*') {
-        int arrIdx = menuScroll + selectedCoin;
-        if (arrIdx < numVisible) {
-          int coinIdx = visibleIndices[arrIdx];
-          Coin* c = (visibleTypes[arrIdx]==0) ? &simCoins[coinIdx] : (Coin*)&marketCoins[coinIdx];
-          float val = limitInput.toFloat();
-          if(settingLower) c->lower = val;
-          else c->upper = val;
-          saveUserCoinPref(visibleIndices[arrIdx], visibleTypes[arrIdx]==0);
-        }
-        menuState=STATE_COIN_DETAIL; menuCursor=0; drawCoinDetail(selectedCoin);
-      }
-      break;
-    }
-    
-    case STATE_CHOOSE_COIN: {
-      buildChooseCoinsBuffer();
-      if(key=='A') {
-        if(menuCursor>0){menuCursor--;}
-        else if(menuScroll>0){menuScroll--;}
-        drawChooseCoins();
-      }
-      else if(key=='B') {
-        if(menuCursor<2 && (menuScroll+menuCursor+1)<numVisible){menuCursor++;}  // CHANGED: max cursor 2
-        else if(menuScroll+3<numVisible){menuScroll++;}  // CHANGED: scroll threshold
-        drawChooseCoins();
-      }
-      else if(key=='*'){
-        int arrIdx = menuScroll + menuCursor;
-        if(visibleTypes[arrIdx]==0)
-          simCoins[visibleIndices[arrIdx]].subscribed = !simCoins[visibleIndices[arrIdx]].subscribed;
-        else
-          marketCoins[visibleIndices[arrIdx]].subscribed = !marketCoins[visibleIndices[arrIdx]].subscribed;
-        saveUserCoinPref(visibleIndices[arrIdx], visibleTypes[arrIdx]==0);
-        
-        // REBUILD buffer so removed coin disappears immediately
-        menuCursor = 0;
-        menuScroll = 0;
-        buildChooseCoinsBuffer();
-        drawChooseCoins();
-      }
-      else if(key=='#'){menuState=STATE_MAIN_MENU;menuCursor=0;drawMainMenu();}
-      break;
-    }
-    
-    case STATE_LOGOUT_CONFIRM:
-      if(key=='A'||key=='B'){menuCursor=1-menuCursor;drawLogoutConfirm();}
-      else if(key=='*'){
-        if(menuCursor==0){
-          loggedIn=false;currentUID="";currentName="";currentID="";currentEmail="";
-          menuState=STATE_WAIT_CARD;inWaitForCard=true;
-          lcd.clear();lcd.setCursor(2,0);lcd.print("RFID Login System");
-          lcd.setCursor(0,2);lcd.print("Please tap card...");
-        } else {
-          menuState=STATE_MAIN_MENU;menuCursor=0;drawMainMenu();
-        }
-      }
-      break;
-      
-    case STATE_ALERT:
-      // Clear all triggered flags
-      for(int i=0;i<simCount;i++) simCoins[i].triggered=false;
-      for(int i=0;i<marketCount;i++) marketCoins[i].triggered=false;
-      alertCount=0;
-      menuState=STATE_MAIN_MENU;
-      menuCursor=0;
-      drawMainMenu();
-      break;
-      
-    case STATE_KEYMAP:
-      if(key=='#'){menuState=STATE_MAIN_MENU;menuCursor=0;drawMainMenu();}
-      break;
-  }
 }
