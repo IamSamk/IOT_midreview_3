@@ -9,14 +9,14 @@
 #include <Firebase_ESP_Client.h>
 
 // ===== CREDENTIALS =====
-#define WIFI_SSID "Not connected"
-#define WIFI_PASSWORD "12345678"
+#define WIFI_SSID "raowaifi"
+#define WIFI_PASSWORD "netbeka123"
 #define API_KEY "AIzaSyAhQH-phbFZPui0itYuBdTBJIm1FpUsGRQ"
 #define DATABASE_URL "https://iotcie3-default-rtdb.asia-southeast1.firebasedatabase.app/"
 #define USER_UID "RZCeb75gvLWRyMECnUgqQTlxgRr2"
 #define USER_EMAIL "samarthkadambtech24@rvu.edu.in"
 #define USER_PASSWORD "SamkRVU@24"
-#define COINLAYER_API_KEY "f434d61712e69fdfbc3ac2a32d83b27f"
+#define COINLAYER_API_KEY "1079137ca503d046a36d534f16b29dc4"
 const char* coinlayerEndpoint = "http://api.coinlayer.com/api/live?access_key=" COINLAYER_API_KEY;
 
 // ==== HARDWARE SETUP =====
@@ -50,15 +50,15 @@ bool inWaitForCard = true; // start in wait state
 struct Coin {
   String symbol;
   float price;
-  float lastPrice;  // NEW - track previous price
+  float lastPrice; 
   float lower, upper;
   bool subscribed;
   bool triggered;
-  bool lowerLatched;  // NEW
-  bool upperLatched;  // NEW
+  bool lowerLatched; 
+  bool upperLatched; 
 };
 Coin simCoins[3] = {
-    {"coin1", 32000, 32000, 0, 0, false, false, false, false},  // added lastPrice = price
+    {"coin1", 32000, 32000, 0, 0, false, false, false, false},  
     {"coin2", 2100, 2100, 0, 0, false, false, false, false},
     {"coin3", 0.65, 0.65, 0, 0, false, false, false, false}
 };
@@ -218,10 +218,9 @@ void updateSimCoinsToCloud() {
 }
 
 // ==== FILTERED SCROLL/INDEX BUFFER FOR ROBUST PAGING ====
-int visibleIndices[16]; // max 16 for safety. [index in sim/market arrays]
-int visibleTypes[16];   // 0=sim, 1=market
-int numVisible;         // entries in visibleIndices[]
-
+int visibleIndices[16]; 
+int visibleTypes[16];   
+int numVisible;        
 void buildCurrentCoinsBuffer() {
   numVisible = 0;
   for (int i = 0; i < simCount; ++i)
@@ -480,9 +479,7 @@ void loop() {
     if (waitStartTime == 0) {
       waitStartTime = millis();  // Start countdown
     }
-    if (millis() - waitStartTime > 4000UL) {  // CHANGED: 4 seconds
-      // Auto-login as Samarth
-      currentUID = "AUTO_LOGIN";
+    if (millis() - waitStartTime > 4000UL) { 
       currentName = "Samarth";
       currentID = "1RUA24CSE399";
       currentEmail = USER_EMAIL;
@@ -494,7 +491,6 @@ void loop() {
       waitStartTime = 0;  // Reset for next login cycle
       lcd.clear();
       lcd.setCursor(0,0); lcd.print("Welcome " + currentName);
-      // REMOVED: lcd.setCursor(0,1); lcd.print("(Auto-login)");
       lcd.setCursor(0,2); lcd.print(">Press any key...");
       lastCardSignalTime = millis();
       delay(1500);
